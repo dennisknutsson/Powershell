@@ -1,4 +1,4 @@
-﻿<#
+<#
 .Synopsis
    Disable Eject i virtual enviroment
 .DESCRIPTION
@@ -26,6 +26,11 @@ Set-Itemproperty -Path $diskpath.PSPath -name Capabilities -Value "2" -Type DWor
 $diskpath2=@(Get-ChildItem -path HKLM:\SYSTEM\CurrentControlSet\Enum\PCIIDE\IDEChannel -Recurse|ForEach-Object {Get-ItemProperty -Path $_.PsPath|where {$_.DeviceDesc -like "*IDE-kanal*"}})
 #$diskpath.PSPath
 Set-Itemproperty -Path $diskpath2.PSPath -name Capabilities -Value "2" -Type DWord
+
+#Standard AHCI Controller default 6
+$diskpath3=@(Get-ChildItem -path HKLM:\SYSTEM\CurrentControlSet\Enum\PCIIDE\IDEChannel -Recurse|ForEach-Object {Get-ItemProperty -Path $_.PsPath|where {$_.DeviceDesc -like "*Standard AHCI*"}})
+#$diskpath.PSPath
+Set-Itemproperty -Path $diskpath3.PSPath -name Capabilities -Value "2" -Type DWord
 
 $stopwatch.Stop()
 
