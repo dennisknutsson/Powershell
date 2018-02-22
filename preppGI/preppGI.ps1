@@ -1,6 +1,9 @@
-﻿<#
-Filversion 0.2
+<#
+Filversion 0.5
 Skript för att förbereda en golden image för uppdatering
+2018-02-13 Lagt till färg för Ok/Nok
+2018-01-25 Lagt till triggers för SCCM klienten
+2017-12-20 Lagt till Miljö variabler till rapporten
 2017-02-24 Lagt till så SCCM tjänsten startas och värdet för Appdeploy sätts till True
 2017-12-14 Skrivit om allt för att skapa rapport
 #>
@@ -92,7 +95,8 @@ FOREACH ($service in $services) {
 Set-Itemproperty -Path HKLM:\SOFTWARE\VGR\CCM -name CCMAppDeploy -Value "True"
 $action="Set Registry Value"
 $what="HKLM:\SOFTWARE\VGR\CCM CCMAppDeploy"
-$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\CCM -name CCMAppDeploy)
+#$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\CCM -name CCMAppDeploy)
+$result=(Get-ItemProperty -Path HKLM:\SOFTWARE\VGR\CCM).CCMAppDeploy
 IF ($result -eq "True") {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
@@ -175,6 +179,9 @@ $mailbody = $mailbody |
     #-PostContent "<p><h2>Release DHCP-lease and shutting down</h2></p><br>"
     ConvertTo-Html -Head $Header -PreContent "<p><h2>$scripttitle</h2></p><br> $todo" | 
     Set-AlternatingRows -CSSEvenClass even -CSSOddClass odd
+
+$mailbody = $mailbody.Replace("<td>NOK</td></tr>","<td bgcolor=""#FF0000"">NOK</td></tr>")
+$mailbody = $mailbody.Replace("<td>OK</td></tr>","<td bgcolor=""#00FF00"">OK</td></tr>")
 
 $mailbody | Out-File $PathToReport"\"$scripttitle".html"
 
