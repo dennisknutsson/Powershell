@@ -1,5 +1,7 @@
-﻿# Filversion 2.0
+# Filversion 2.0
 #cd '\\vgregion.se\Ifr$\ScriptAndExec\Exec\VDI'
+# 2018-02-19 Lagt till Kontroll av GI, är den inte ok kasta upp fråga.
+# 2018-02-07 Lagt till Fler mottagare av mailen
 # 2017-12-07 Lagt till Sendmail plus kontroller av alla saker vi testar.
 # 2017-12-04 Lagt till Kontroll av service innan ändring, Shutdown som sista aktion, Ta bort filer i c:\temp
 # 2017-03-03 Lagt till rensning av Imprivata loggar
@@ -16,7 +18,8 @@ Softwaredistribution
 
 Kolla register värden får identity och VDI
 
-
+Get-ADComputer -Prop description | select Name,Description
+Get-ADComputer -Filter {Name -eq $computername} -Properties *|select Description
 #>
 
 
@@ -64,9 +67,11 @@ Function Set-AlternatingRows {
 
 #Declare variables
 # Set debug preference
-# $DebugPreference = "Continue"
+#$DebugPreference = "Continue"
 $DebugPreference = "SilentlyContinue"
-$smtpTo = "Dennis <dennis.knutsson@vgregion.se>"
+#$smtpTo = "Dennis <dennis.knutsson@vgregion.se>","Mathias <mathias.a.andersson@vgregion.se>","Anders <anders.hermansson@vgregion.se>"
+#IF ($env:USERNAME -eq "ka.denkn1") {$smtpTo = "Dennis <dennis.knutsson@vgregion.se>"} ELSE {$smtpTo = "Dennis <dennis.knutsson@vgregion.se>","Mathias <mathias.a.andersson@vgregion.se>","Anders <anders.hermansson@vgregion.se>","Jens <jens.engelbrektsson@vgregion.se>"}
+$smtpTo = "Dennis <dennis.knutsson@vgregion.se>","Mathias <mathias.a.andersson@vgregion.se>","Anders <anders.hermansson@vgregion.se>","Jens <jens.engelbrektsson@vgregion.se>"
 $smtpFrom = "Script from "+$env:computername+"<no.reply@vgregion.se>"
 $smtpServer = "mailhost.vgregion.se"
 $datetime = Get-Date -UFormat "%Y-%m-%d %T"
@@ -75,7 +80,7 @@ $scriptname = $MyInvocation.MyCommand | select -ExpandProperty Name
 $scriptname = $scriptname.replace(".ps1"," ")
 $scripttitle = $scriptname
 $mailbody  = @()
-$todo=@("TODO=","Screen-Resolution")
+$todo=@("TODO=","Screen-Resolution","Remove profiles","Lägg till description från AD till VDI regnyckeln","Rensa alla loggar","Rensa windows/logs >90dagar","rensa CCMcache")
 
 $Header = @"
 <style>
@@ -190,7 +195,7 @@ $powerSettings = $powerplan.GetRelated("win32_powersettingdataindex") | foreach 
  #$powerSettings=$powerSettings|where {$_.Summary -like "Stäng*" -or $_.Summary -like "kräv*" -or $_.Summary -like "*Strömspar*" -or $_.Summary -like "Timeout för ström*" -or $_.Summary -like "Viloläge*"}
  #$powerSettings=$powerSettings|where {$_.Summary -eq "Energisparläge" -or $_.Summary -like "kräv*" -or $_.Summary -eq "Strömsparläge efter" -or $_.Summary -eq "Viloläge efter" -or $_.Summary -eq "Stäng av skärmen efter" -or $_.Summary -eq "Stäng av hårddisken efter"}|sort Summary
  $powerSettings=$powerSettings|where {$_.Summary -eq "Energisparläge" -or $_.Summary -eq "Strömsparläge efter" -or $_.Summary -eq "Viloläge efter" -or $_.Summary -eq "Stäng av skärmen efter" -or $_.Summary -eq "Stäng av hårddisken efter"}|sort Summary
- 
+ $powerSettings
  #$powerSettings=$powerSettings|where {$_.Value -eq "0"}
 
 FOREACH ($powerSetting in $powerSettings) {
@@ -202,48 +207,19 @@ FOREACH ($powerSetting in $powerSettings) {
     $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 }
 
-
-
-
-
-
-<#
-$action="CMD"
-$what="Current AC Power Setting"
-$Screentimeout=@(powercfg /query SCHEME_MIN SUB_VIDEO VIDEOIDLE)
-FOREACH ($string in $Screentimeout) {
-    IF ($string -like "*Current AC*") {
-    $null,$result=$string.Split(':')
-    }
-}
-IF ($result -like " 0x00000000") {$status="OK"} ELSE {$status="NOK"}
-$mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
-#>
-#POWERCFG /query 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 7516b95f-f776-4464-8c53-06167f40cc99 3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e|Find /I "Index"
-#powercfg /query SCHEME_MIN SUB_VIDEO VIDEOIDLE
-#powercfg -change -monitor-timeout-ac 0
-#powercfg -change -monitor-timeout-dc 0
-#powercfg -change -disk-timeout-ac 0
-#powercfg -change -disk-timeout-dc 0
-#powercfg -change -standby-timeout-ac 0
-#powercfg -change -standby-timeout-dc 0
-#powercfg -change -hibernate-timeout-ac 0
-#powercfg -change -hibernate-timeout-dc 0
-
-
 #Sätter Växlingsfilen till fysiskt minne X1,5 
 $result=$null
 $mem=(Get-WmiObject Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum
 $mem *="1.5"
 $mem =[math]::truncate($mem / 1MB)
 IF ($reportonly -eq "no"){
-$computersys = Get-WmiObject Win32_ComputerSystem -EnableAllPrivileges;
-$computersys.AutomaticManagedPagefile = $False;
-$computersys.Put();
-$pagefile = Get-WmiObject -Query "Select * From Win32_PageFileSetting Where Name like '%pagefile.sys'";
-$pagefile.InitialSize = $mem;
-$pagefile.MaximumSize = $mem;
-$pagefile.Put();
+    $computersys = Get-WmiObject Win32_ComputerSystem -EnableAllPrivileges;
+    $computersys.AutomaticManagedPagefile = $False;
+    $computersys.Put();
+    $pagefile = Get-WmiObject -Query "Select * From Win32_PageFileSetting Where Name like '%pagefile.sys'";
+    $pagefile.InitialSize = $mem;
+    $pagefile.MaximumSize = $mem;
+    $pagefile.Put();
 }
 $action="WMI"
 $what="Pagefile"
@@ -309,6 +285,22 @@ FOREACH ($service in $services) {
     $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
     }
 }
+
+#Rensa Bits jobb
+$result=$null
+IF ($reportonly -eq "no"){
+#Måste köras som System?
+Start-ScheduledTask -TaskName "Clean_Bits"
+#Get-BitsTransfer -Allusers|Remove-BitsTransfer
+}
+$action="Remove Job"
+$bitsjobname=(Get-BitsTransfer -AllUsers).DisplayName|Select-Object -Last 1
+$what="Bits (" +$bitsjobname+")"
+$bits=(Get-BitsTransfer -AllUsers).count
+#$status="NA*"
+IF ($bits -eq "0") {$result="Cleaned"} ELSE {$result="Not Cleaned"}
+IF ($bits -eq "0") {$status="OK"} ELSE {$status="NOK"}
+$mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
 ##Tar bort schemalagt jobb för CCM
 $Schedule= New-Object -ComObject Schedule.Service
@@ -576,12 +568,13 @@ IF ($result -eq "Cleaned") {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
 ##Ta bort certifikat för CCM
+$result=$null
 IF ($reportonly -eq "no"){
     Remove-Item -Path HKLM:\Software\Microsoft\SystemCertificates\SMS\Certificates\* -Force 
 }
 $action="Remove Registry Key"
 $what="HKLM:\Software\Microsoft\SystemCertificates\SMS\Certificates\*"
-IF ((Get-ChildItem "HKLM:\Software\Microsoft\SystemCertificates\SMS\Certificates" | ForEach-Object {Get-ItemProperty $_.pspath}) -ne $null) {$result=$null,$result="Not Cleaned"} ELSE {$result="Cleaned"}
+IF ((Get-ChildItem "HKLM:\Software\Microsoft\SystemCertificates\SMS\Certificates" | ForEach-Object {Get-ItemProperty $_.pspath}) -ne $null) {$result="Not Cleaned"} ELSE {$result="Cleaned"}
 IF ($result -eq "Cleaned") {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
@@ -592,7 +585,7 @@ IF ($reportonly -eq "no"){
     Write-Output "Creating HKLM:\SOFTWARE\VGR\IDENTITY"
     New-Item -Path HKLM:\SOFTWARE\VGR\IDENTITY
     }
-} ELSE {Write-Host "HKLM:\SOFTWARE\VGR\IDENTITY Exist"}
+} #ELSE {Write-Host "HKLM:\SOFTWARE\VGR\IDENTITY Exist"}
 
 $action="Set Registry Value"
 $what="HKLM:\SOFTWARE\VGR\IDENTITY"
@@ -622,7 +615,8 @@ IF ($reportonly -eq "no"){
 }
 $action="Set Registry Value"
 $what="HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters DisabledComponents"
-$result=(Get-ItemPropertyValue -Path HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters -Name DisabledComponents)
+$result=(Get-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters).DisabledComponents
+#$result=(Get-ItemPropertyValue -Path HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters -Name DisabledComponents)
 IF ($result -eq "255") {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
@@ -633,7 +627,8 @@ IF ($reportonly -eq "no"){
 }
 $action="Set Registry Value"
 $what="HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System DisableLockWorkstation"
-$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System -name DisableLockWorkstation)
+$result=(Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System).DisableLockWorkstation
+#$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System -name DisableLockWorkstation)
 IF ($result -eq "1") {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
@@ -644,7 +639,8 @@ IF ($reportonly -eq "no"){
 }
 $action="Set Registry Value"
 $what="HKLM:\Software\ThinPrint Lang"
-$result=(Get-ItemPropertyValue -Path HKLM:\Software\ThinPrint -name Lang)
+$result=(Get-ItemProperty -Path HKLM:\Software\ThinPrint).Lang
+#$result=(Get-ItemPropertyValue -Path HKLM:\Software\ThinPrint -name Lang)
 IF ($result -eq "sve") {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
@@ -655,7 +651,8 @@ IF ($reportonly -eq "no"){
 }
 $action="Set Registry Value"
 $what="HKLM:\SOFTWARE\VGR\CCM CCMAppDeploy"
-$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\CCM -name CCMAppDeploy)
+$result=(Get-ItemProperty -Path HKLM:\SOFTWARE\VGR\CCM).CCMAppDeploy
+#$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\CCM -name CCMAppDeploy)
 IF ($result -eq "False") {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
@@ -666,7 +663,8 @@ IF ($reportonly -eq "no"){
 }
 $action="Set Registry Value"
 $what="HKLM:\SOFTWARE\VGR\IDENTITY Anpassningar"
-$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\IDENTITY -name Anpassningar)
+$result=(Get-ItemProperty -Path HKLM:\SOFTWARE\VGR\IDENTITY).Anpassningar
+#$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\IDENTITY -name Anpassningar)
 IF ($result -eq "|VDI") {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
@@ -677,7 +675,8 @@ IF ($reportonly -eq "no"){
 }
 $action="Set Registry Value"
 $what="HKLM:\SOFTWARE\VGR\IDENTITY Underkategori"
-$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\IDENTITY -name Underkategori)
+$result=(Get-ItemProperty -Path HKLM:\SOFTWARE\VGR\IDENTITY).Underkategori
+#$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\IDENTITY -name Underkategori)
 IF ($result -eq "VDI") {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
@@ -688,21 +687,24 @@ IF ($reportonly -eq "no"){
 }
 $action="Set Registry Value"
 $what="HKLM:\SOFTWARE\VGR\VDI ImageTimeStamp"
-$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\VDI -name ImageTimeStamp)
+$result=(Get-ItemProperty -Path HKLM:\SOFTWARE\VGR\VDI).ImageTimeStamp
+#$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\VDI -name ImageTimeStamp)
 IF ($result -ne $null) {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
 #Golden Image Version
 $result=$null
 $version=""
-[int]$version=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\VDI -Name ImageVersion -ErrorAction SilentlyContinue)
+[int]$version=(Get-ItemProperty -Path HKLM:\SOFTWARE\VGR\VDI).ImageVersion
+#[int]$version=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\VDI -Name ImageVersion -ErrorAction SilentlyContinue)
 IF ($version -ne "") {$version++} ELSE {[int]$version="1"}
 IF ($reportonly -eq "no"){
     Set-Itemproperty -Path HKLM:\SOFTWARE\VGR\VDI -name ImageVersion -Value $version -Type DWord
 }
 $action="Set Registry Value"
 $what="HKLM:\SOFTWARE\VGR\VDI ImageVersion"
-$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\VDI -name ImageVersion)
+$result=(Get-ItemProperty -Path HKLM:\SOFTWARE\VGR\VDI).ImageVersion
+#$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\VDI -name ImageVersion)
 IF ($result -ne $null) {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
@@ -713,7 +715,8 @@ IF ($reportonly -eq "no"){
 }
 $action="Set Registry Value"
 $what="HKLM:\SOFTWARE\VGR\VDI ImageName"
-$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\VDI -name ImageName)
+$result=(Get-ItemProperty -Path HKLM:\SOFTWARE\VGR\VDI).ImageName
+#$result=(Get-ItemPropertyValue -Path HKLM:\SOFTWARE\VGR\VDI -name ImageName)
 IF ($result -eq $env:computername) {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
@@ -724,7 +727,8 @@ IF ($reportonly -eq "no"){
 }
 $action="Set Registry Value"
 $what="HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\policies\system EnableLUA"
-$result=(Get-ItemPropertyvalue -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\policies\system -name EnableLUA)
+$result=(Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\policies\system).EnableLUA
+#$result=(Get-ItemPropertyvalue -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\policies\system -name EnableLUA)
 IF ($result -eq "1") {$status="OK"} ELSE {$status="NOK"}
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
@@ -784,6 +788,25 @@ $result=$os.ConvertToDateTime($os.LastBootUpTime)
 $status="NA"
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
 
+#Computer desc
+#Read from file? location?
+#$action="Env"
+#$what="Computer description"
+#$result=(Get-ADComputer -Filter {Name -eq $computername} -Properties *).Description
+#$result=Get-ADComputer -Filter {Name -eq $computername} -Properties *|select Description
+#$status="NA"
+#$mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
+
+#Powershell version
+$action="Env"
+$what="Powershell version"
+$major = $Host.Version.Major
+$minor = $Host.Version.Minor
+$result=$major.ToString()+"."+$minor.ToString()
+$status="NA"
+IF ($major -gt "4") {$status="OK"} ELSE {$status="NOK"}
+$mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
+
 #WindowsUpdateStatus
 $result=$null
 $WindowsUpdateStatus = (Get-HotFix -ComputerName $env:COMPUTERNAME | Where-Object {$_.InstalledOn -ne $null} | Sort-Object InstalledOn)[-1]
@@ -805,27 +828,28 @@ $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},
 $regkeys = @("Active Setup Temp Folders","BranchCache","Downloaded Program Files","Internet Cache Files","Old ChkDsk Files","Previous Installations","Recycle Bin","RetailDemo Offline Content","Service Pack Cleanup","Setup Log Files","System error memory dump files","System error minidump files","Temporary Files","Temporary Setup Files","Thumbnail Cache","Update Cleanup","Upgrade Discarded Files","User file versions","Windows Defender","Windows Error Reporting Archive Files","Windows Error Reporting Queue Files","Windows Error Reporting System Archive Files","Windows Error Reporting System Queue Files","Windows Error Reporting Temp Files","Windows ESD installation files","Windows Upgrade Log Files","Memory Dump Files","Offline Pages Files")
 $regkeys=$regkeys|sort
 FOREACH ($regkey in $regkeys) {
-
-IF (Test-Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\$regkey) {#Write-Output $regkey "Exist"
-    IF ($reportonly -eq "no"){
-        Set-Itemproperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\$regkey -name StateFlags0001 -Value "2" -Type DWord
-    }
+    IF (Test-Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\$regkey) {#Write-Output $regkey "Exist"
+        IF ($reportonly -eq "no"){
+            Set-Itemproperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\$regkey -name StateFlags0001 -Value "2" -Type DWord
+        }
     }
 }
 #kommando för att köra diskcleanup saknas
 
 #Profile rensning
-#Bör testas och komma övernens hur vi skall rensa profiler.
+#Bör testas och komma överens hur vi skall rensa profiler.
 #Get-WmiObject -Class Win32_UserProfile | where {$_.LocalPath.split('')[-1] -eq '<profilename_changeme>'} | foreach {$_.Delete()}
+#Get-WmiObject -Class Win32_UserProfile | where {$_.LocalPath.split('')[-1] -like 'ka.*'}
+#Get-WmiObject -Class Win32_UserProfile | where {$_.LocalPath -like 'ka.*'}
 
-#Adobe Flash Player 
-#Adobe Reader DC 
-#Adobe Shockwave Player 11 
-#Feedreader 
-#MiM 
-#Net iD Client GPO 
-#NetClean 
-#Snow Inventory Client for Windows VDI  
+#Adobe Flash Player 
+#Adobe Reader DC 
+#Adobe Shockwave Player 11 
+#Feedreader 
+#MiM 
+#Net iD Client GPO 
+#NetClean 
+#Snow Inventory Client for Windows VDI  
 
 $stopwatch.Stop()
 
@@ -838,6 +862,20 @@ $msec=(($stopwatch.Elapsed).Milliseconds).ToString()
 $result=($sec+","+$msec)
 $status="NA"
 $mailbody += "" | Select-Object @{n="Action";e={$action}},@{n="What";e={$what}},@{n="Result";e={$result}},@{n="Status";e={$status}}
+
+#är allt ok?
+$allok=$mailbody|Where-Object {$_.status -eq "NOK"}
+
+IF ($allok.count -eq "0") {
+    $shutdown="yes"}
+    ELSE {
+    $allok|FT -AutoSize
+    Write-Host "Golden image är inte OK, Läs mailet och åtgärda. Kör sen skriptet igen." -foregroundcolor yellow
+    Write-Host
+    $answer= Read-Host -Prompt 'Stäng av ändå (yes/no)'
+    IF ($answer -eq "yes") {$shutdown="yes"} ELSE {$shutdown="no"}
+    Write-Host
+}
 
 #######################################################################################
 $mailbody = $mailbody | 
@@ -852,36 +890,29 @@ $mailbody = $mailbody.Replace("<td>OK</td></tr>","<td bgcolor=""#00FF00"">OK</td
 }
 $mailbody | Out-File $PathToReport"\"$scripttitle".html"
 
-Write-host "Sending mail to" $smtpTo 
 
 $Stoploop = $false
 [int]$Retrycount = "1"
 
 do {
-
     try {
         Send-MailMessage -To $smtpTo -From $smtpFrom -Subject "$scripttitle $datetime" -Body ($mailbody | Out-String) -BodyAsHtml -SmtpServer $smtpServer -ErrorAction Stop;
         # -port $SMTPPort -UseSsl -Credential $mycreds
-        Write-Host "Mail sent using $SMTPServer"
+        Write-Debug "Sending mail to $smtpTo"
+        Write-Debug "Mail sent using $SMTPServer"
         $Stoploop = $true
         }
-
     catch {
-
         if ($Retrycount -gt 3){
             Write-Host "Could not send Information after 3 retrys."
             $Stoploop = $true
         }
-
         else {
             Write-Host "Could not send Information retrying in 15 seconds..."
             Start-Sleep -Seconds 15
             $Retrycount = $Retrycount + 1
-
         }
-
     }
-
 }
 
 While ($Stoploop -eq $false)
@@ -891,26 +922,18 @@ Write-Host "Script finished..." -foregroundcolor Green
 
 #Släpper inte DHCP och stänger inte av
 IF ($localdebug -eq "no"){
-#Släpper DHCP-lease
-IF ($reportonly -eq "no"){
-    $ethernet = Get-WmiObject -Class Win32_NetworkAdapterConfiguration | Where {
-        $_.IpEnabled -eq $true -and $_.DhcpEnabled -eq $true
+    #Släpper DHCP-lease
+    IF ($reportonly -eq "no"){
+        IF ($shutdown -eq "yes"){
+            $ethernet = Get-WmiObject -Class Win32_NetworkAdapterConfiguration | Where {
+            $_.IpEnabled -eq $true -and $_.DhcpEnabled -eq $true
+            }
+            foreach ($lan in $ethernet){
+                Write-Host "Släpper DHCP-lease för "$lan.IPAddress
+                $lan.ReleaseDHCPLease() | Out-Null
+            }
+            #Stänger av maskinen
+            Stop-Computer -Force
+        }
     }
-    foreach ($lan in $ethernet){
-        Write-Host "Släpper DHCP-lease för "$lan.IPAddress
-        $lan.ReleaseDHCPLease() | Out-Null
-    }
-}
-
-<#
-#>
-#Stänger av maskinen
-#shutdown
-IF ($reportonly -eq "no"){
-    Stop-Computer -Force
-}
-#} ELSE {Write-Output "Not Golden Image"}
-
-
-#List services
 }
