@@ -18,7 +18,7 @@ if($global:DefaultVIServers.Count -lt 1)
     # vCenter Credentials
     $cred= get-credential -Message "Enter your login to vCenter:"
 
-    $vCenter = "vct3.vgregion.se"
+    $vCenter = "VC"
     [void](Connect-VIServer $vCenter -Credential $cred )
     #Connect-VIServer $vCenter | Out-Null
     Clear-Host
